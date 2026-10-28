@@ -41,6 +41,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   CameraController? _cameraController;
   HttpServer? _httpServer;
   BonsoirBroadcast? _bonsoirBroadcast;
+  Timer? _captureTimer;
   
   // Utilização de uma referência mutável simples para evitar renderizações excessivas do setState
   Uint8List? _rawFrameBuffer;
@@ -74,24 +75,52 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
   }
 
-  void _startImageStream() {
-    _cameraController?.startImageStream((CameraImage image) {
-      final now = DateTime.now();
-      final interval = 1000 ~/ _targetFps;
-      
-      if (now.difference(_lastFrameTime).inMilliseconds >= interval) {
-        _lastFrameTime = now;
-        
-        if (image.planes.isNotEmpty && image.planes.first.bytes.isNotEmpty) {
-          // Gravação direta na referência de memória sem acionar setState na UI do telemóvel
-          _rawFrameBuffer = image.planes.first.bytes;
+  void _startCaptureLoop() {
+    _captureTimer?.cancel();
+    _captureTimer = Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (_) async {
+      if (!_isStreaming) return;
+      if (_cameraController == null || !_cameraController!.value.isInitialized) return;
+      if (_cameraController!.value.isTakingPicture) return;
+
+      try {
+        final xfile = await _cameraController!.takePicture();
+        final bytes = await xfile.readAsBytes();
+        if (bytes.isNotEmpty && bytes.length > 1000) {
+          _rawFrameBuffer = bytes;
         }
+      } catch (e) {
+        debugPrint('Erro ao capturar frame: $e');
       }
     });
   }
 
   Future<void> _startServer() async {
     final router = shelf_router.Router();
+
+    router.get('/', (shelf.Request request) {
+      final html = '''
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3D Print Monitor</title>
+  <style>
+    body { background: #000; color: #fff; text-align: center; font-family: sans-serif; margin: 0; padding: 16px; }
+    img { max-width: 100%; height: auto; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h2>3D Print Monitor</h2>
+  <img src="/stream" />
+</body>
+</html>
+''';
+      return shelf.Response.ok(
+        html,
+        headers: {'Content-Type': 'text/html; charset=utf-8'},
+      );
+    });
 
     router.get('/stream', (shelf.Request request) {
       final controller = StreamController<List<int>>();
@@ -161,10 +190,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
       _serverIp = "http://$localIp:8080/stream";
     });
 
-    _startImageStream();
+    _startCaptureLoop();
   }
 
   Future<void> _stopServer() async {
+    _captureTimer?.cancel();
+    _captureTimer = null;
     if (_cameraController?.value.isStreamingImages ?? false) {
       await _cameraController?.stopImageStream();
     }
