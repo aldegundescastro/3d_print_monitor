@@ -1,0 +1,19 @@
+name: monitor_impressora
+description: App de monitoramento MJPEG para Impressora 3D.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.10.6
+  shelf: ^1.4.1
+  shelf_router: ^1.1.4
+  bonsoir: ^3.0.1
+  wakelock_plus: ^1.2.1
+
+flutter:
+  uses-material-design: true
