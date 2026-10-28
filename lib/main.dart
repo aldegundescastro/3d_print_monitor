@@ -95,35 +95,44 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
     router.get('/stream', (shelf.Request request) {
       final controller = StreamController<List<int>>();
-      
-      final timer = Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (timer) {
-        if (!_isStreaming) {
-          timer.cancel();
+      Timer? timer;
+      bool closed = false;
+
+      void cleanup() {
+        if (closed) return;
+        closed = true;
+        timer?.cancel();
+        if (!controller.isClosed) {
           controller.close();
+        }
+      }
+
+      timer = Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (t) {
+        if (!_isStreaming || closed) {
+          cleanup();
           return;
         }
 
-        if (_rawFrameBuffer != null) {
+        final frame = _rawFrameBuffer;
+        if (frame != null && frame.isNotEmpty) {
           try {
-            // Envia o frame formatado com cabeçalhos binários estritos para o navegador
-            controller.add(ImageHttpFormatter.formatFrame(_rawFrameBuffer!));
+            controller.add(ImageHttpFormatter.formatFrame(frame));
           } catch (e) {
-            timer.cancel();
-            controller.close();
+            cleanup();
           }
         }
       });
 
-      // Fechar recursos assíncronos se o cliente/PC fechar o navegador
-      request.context['shelf.io.connection_context'];
+      controller.onCancel = cleanup;
 
       return shelf.Response.ok(
         controller.stream,
         headers: {
-          'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
+          'Content-Type': 'multipart/x-mixed-replace; boundary=frame',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Connection': 'keep-alive',
           'Pragma': 'no-cache',
+          'Access-Control-Allow-Origin': '*',
         },
       );
     });
