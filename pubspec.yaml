@@ -12,7 +12,7 @@ dependencies:
   camera: ^0.10.6
   shelf: ^1.4.1
   shelf_router: ^1.1.4
-  bonsoir: ^3.0.1
+  bonsoir: ^7.1.6
   wakelock_plus: ^1.2.1
 
 flutter:
