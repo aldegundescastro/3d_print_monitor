@@ -204,6 +204,94 @@ class _MonitorScreenState extends State<MonitorScreen> {
       );
     }
 
+    Widget controlPanel = Container(
+      padding: const EdgeInsets.all(16),
+      decoration: const BoxDecoration(
+        color: Colors.black26,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        children: [
+          Text(
+            _isStreaming ? "🔴 TRANSMITINDO" : "⚪ DISPONÍVEL",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: _isStreaming ? Colors.red : Colors.green,
+            ),
+          ),
+          const SizedBox(height: 4),
+          SelectableText(
+            _serverIp,
+            style: const TextStyle(fontSize: 16, color: Colors.blue),
+          ),
+          const Divider(height: 24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("Taxa de Frames (FPS):"),
+              DropdownButton<int>(
+                value: _targetFps,
+                // CORREÇÃO: Declarar explicitamente o array antes do método .map
+                items: [1, 5, 10, 15, 30].map((fps) {
+                  return DropdownMenuItem(value: fps, child: Text("$fps FPS"));
+                }).toList(),
+                onChanged: _isStreaming ? null : (value) {
+                  if (value != null) setState(() => _targetFps = value);
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _isStreaming ? Colors.red : Colors.green,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: _isStreaming ? _stopServer : _startServer,
+                  icon: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
+                  label: Text(_isStreaming ? "Parar Servidor" : "Iniciar Servidor"),
+                ),
+              ),
+              if (_isStreaming) ...[
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amber,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                  onPressed: () => setState(() => _isEconomicMode = true),
+                  child: const Icon(Icons.wb_incandescent_outlined),
+                ),
+              ]
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (_isStreaming) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('💡 3D Print Camera Server')),
+        body: Column(
+          children: [
+            const Expanded(
+              child: Center(
+                child: Text(
+                  'TRANSMISSÃO ATIVA\nVisualize no browser',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70, fontSize: 18),
+                ),
+              ),
+            ),
+            controlPanel,
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(title: const Text('💡 3D Print Camera Server')),
       body: Column(
@@ -217,73 +305,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
               ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              color: Colors.black26,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              children: [
-                Text(
-                  _isStreaming ? "🔴 TRANSMITINDO" : "⚪ DISPONÍVEL",
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: _isStreaming ? Colors.red : Colors.green,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                SelectableText(
-                  _serverIp,
-                  style: const TextStyle(fontSize: 16, color: Colors.blue),
-                ),
-                const Divider(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text("Taxa de Frames (FPS):"),
-                    DropdownButton<int>(
-                      value: _targetFps,
-                      // CORREÇÃO: Declarar explicitamente o array antes do método .map
-                      items: [1, 5, 10, 15, 30].map((fps) {
-                        return DropdownMenuItem(value: fps, child: Text("$fps FPS"));
-                      }).toList(),
-                      onChanged: _isStreaming ? null : (value) {
-                        if (value != null) setState(() => _targetFps = value);
-                      },
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _isStreaming ? Colors.red : Colors.green,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        onPressed: _isStreaming ? _stopServer : _startServer,
-                        icon: Icon(_isStreaming ? Icons.stop : Icons.play_arrow),
-                        label: Text(_isStreaming ? "Parar Servidor" : "Iniciar Servidor"),
-                      ),
-                    ),
-                    if (_isStreaming) ...[
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber,
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                        ),
-                        onPressed: () => setState(() => _isEconomicMode = true),
-                        child: const Icon(Icons.wb_incandescent_outlined),
-                      ),
-                    ]
-                  ],
-                ),
-              ],
-            ),
-          ),
+          controlPanel,
         ],
       ),
     );
