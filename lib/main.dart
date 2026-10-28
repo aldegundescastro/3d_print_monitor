@@ -244,7 +244,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     const Text("Taxa de Frames (FPS):"),
                     DropdownButton<int>(
                       value: _targetFps,
-                      items:.map((fps) {
+                      // CORREÇÃO: Declarar explicitamente o array antes do método .map
+                      items: [1, 5, 10, 15, 30].map((fps) {
                         return DropdownMenuItem(value: fps, child: Text("$fps FPS"));
                       }).toList(),
                       onChanged: _isStreaming ? null : (value) {
