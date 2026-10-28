@@ -81,9 +81,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
       if (now.difference(_lastFrameTime).inMilliseconds >= interval) {
         _lastFrameTime = now;
         
-        if (image.planes.isNotEmpty) {
+        // CORREÇÃO: Aceder à propriedade .bytes de dentro do primeiro plano (.first) da lista
+        if (image.planes.isNotEmpty && image.planes.first.bytes.isNotEmpty) {
           setState(() {
-            _latestFrame = image.planes.bytes;
+            _latestFrame = image.planes.first.bytes;
           });
         }
       }
