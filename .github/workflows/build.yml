@@ -9,31 +9,37 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      # 1. Checkout atualizado para o ecossistema Node 24
+      - uses: actions/checkout@v4.2.2
 
-      - name: Set up Java
+      # 2. Configura explicitamente o Java 17 para o Ubuntu 26
+      - name: Set up Java 17
         uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
 
+      # 3. Configura o SDK do Flutter na versão estável
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
-      # NOVO PASSO: Cria a estrutura nativa do Android que está a faltar no repositório
+      # 4. Reconstrói as pastas nativas do Android
       - name: Recreate Android Project Structure
-        run: flutter create . --platforms=android --org com.seuapp.monitor3d
+        run: flutter create . --platforms=android --org com.comercial.monitor3d
 
+      # 5. Descarrega as dependências do pubspec.yaml
       - name: Install Dependencies
         run: flutter pub get
 
+      # 6. Compila o instalador APK final
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
+      # 7. Upload atualizado usando a versão v4.6.0+ (com suporte nativo ao Node 24)
       - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4.6.1
         with:
           name: app-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
