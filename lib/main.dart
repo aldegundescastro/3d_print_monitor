@@ -8,6 +8,7 @@ import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart' as shelf_router;
 import 'package:bonsoir/bonsoir.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:image/image.dart' as img;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,7 +42,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
   CameraController? _cameraController;
   HttpServer? _httpServer;
   BonsoirBroadcast? _bonsoirBroadcast;
-  Timer? _captureTimer;
   
   // Utilização de uma referência mutável simples para evitar renderizações excessivas do setState
   Uint8List? _rawFrameBuffer;
@@ -62,9 +62,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
     
     _cameraController = CameraController(
       widget.cameras.first,
-      ResolutionPreset.medium, // 720p/480p ideal para largura de banda Wi-Fi
+      ResolutionPreset.low, // Menor resolução para maior fluidez e menor latência
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg, // Saída direta nativa compactada em JPEG
+      imageFormatGroup: ImageFormatGroup.yuv420,
     );
 
     try {
@@ -75,21 +75,56 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
   }
 
-  void _startCaptureLoop() {
-    _captureTimer?.cancel();
-    _captureTimer = Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (_) async {
-      if (!_isStreaming) return;
-      if (_cameraController == null || !_cameraController!.value.isInitialized) return;
-      if (_cameraController!.value.isTakingPicture) return;
+  Uint8List? _yuv420ToJpeg(CameraImage image) {
+    try {
+      final width = image.width;
+      final height = image.height;
+      final yPlane = image.planes[0];
+      final uPlane = image.planes[1];
+      final vPlane = image.planes[2];
 
-      try {
-        final xfile = await _cameraController!.takePicture();
-        final bytes = await xfile.readAsBytes();
-        if (bytes.isNotEmpty && bytes.length > 1000) {
-          _rawFrameBuffer = bytes;
+      final imgBuffer = img.Image(width: width, height: height);
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final yIndex = y * yPlane.bytesPerRow + x;
+          final uvIndex = (y ~/ 2) * uPlane.bytesPerRow + (x ~/ 2);
+
+          final yp = yPlane.bytes[yIndex];
+          final up = uPlane.bytes[uvIndex];
+          final vp = vPlane.bytes[uvIndex];
+
+          // Conversão YUV (BT.601)
+          int r = (yp + vp * 1436 / 1024 - 179).round();
+          int g = (yp - up * 46549 / 131072 + 44 - vp * 93604 / 131072 + 91).round();
+          int b = (yp + up * 1814 / 1024 - 227).round();
+
+          r = r.clamp(0, 255);
+          g = g.clamp(0, 255);
+          b = b.clamp(0, 255);
+
+          imgBuffer.setPixelRgb(x, y, r, g, b);
         }
-      } catch (e) {
-        debugPrint('Erro ao capturar frame: $e');
+      }
+
+      return Uint8List.fromList(img.encodeJpg(imgBuffer, quality: 60));
+    } catch (e) {
+      debugPrint('Erro conversão YUV->JPEG: $e');
+      return null;
+    }
+  }
+
+  void _startImageStream() {
+    _cameraController?.startImageStream((CameraImage image) {
+      final now = DateTime.now();
+      final interval = 1000 ~/ _targetFps;
+
+      if (now.difference(_lastFrameTime).inMilliseconds >= interval) {
+        _lastFrameTime = now;
+        final jpeg = _yuv420ToJpeg(image);
+        if (jpeg != null && jpeg.isNotEmpty) {
+          _rawFrameBuffer = jpeg;
+        }
       }
     });
   }
@@ -190,12 +225,10 @@ class _MonitorScreenState extends State<MonitorScreen> {
       _serverIp = "http://$localIp:8080/stream";
     });
 
-    _startCaptureLoop();
+    _startImageStream();
   }
 
   Future<void> _stopServer() async {
-    _captureTimer?.cancel();
-    _captureTimer = null;
     if (_cameraController?.value.isStreamingImages ?? false) {
       await _cameraController?.stopImageStream();
     }
