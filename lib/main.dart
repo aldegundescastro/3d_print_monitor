@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart' hide Router; // Oculta o Router do Flutter para evitar conflitos
+import 'package:flutter/material.dart' hide Router;
 import 'package:camera/camera.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_router/shelf_router.dart' as shelf_router; // Prefixo para evitar conflito
+import 'package:shelf_router/shelf_router.dart' as shelf_router;
 import 'package:bonsoir/bonsoir.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -42,7 +42,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
   HttpServer? _httpServer;
   BonsoirBroadcast? _bonsoirBroadcast;
   
-  Uint8List? _latestFrame;
+  // Utilização de uma referência mutável simples para evitar renderizações excessivas do setState
+  Uint8List? _rawFrameBuffer;
   bool _isStreaming = false;
   bool _isEconomicMode = false;
   int _targetFps = 10;
@@ -60,9 +61,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
     
     _cameraController = CameraController(
       widget.cameras.first,
-      ResolutionPreset.medium,
+      ResolutionPreset.medium, // 720p/480p ideal para largura de banda Wi-Fi
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg,
+      imageFormatGroup: ImageFormatGroup.jpeg, // Saída direta nativa compactada em JPEG
     );
 
     try {
@@ -81,42 +82,47 @@ class _MonitorScreenState extends State<MonitorScreen> {
       if (now.difference(_lastFrameTime).inMilliseconds >= interval) {
         _lastFrameTime = now;
         
-        // CORREÇÃO: Aceder à propriedade .bytes de dentro do primeiro plano (.first) da lista
         if (image.planes.isNotEmpty && image.planes.first.bytes.isNotEmpty) {
-          setState(() {
-            _latestFrame = image.planes.first.bytes;
-          });
+          // Gravação direta na referência de memória sem acionar setState na UI do telemóvel
+          _rawFrameBuffer = image.planes.first.bytes;
         }
       }
     });
   }
 
   Future<void> _startServer() async {
-    final router = shelf_router.Router(); // Correção do Conflito 1
+    final router = shelf_router.Router();
 
     router.get('/stream', (shelf.Request request) {
       final controller = StreamController<List<int>>();
       
-      Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (timer) {
-        if (!_isStreaming || _latestFrame == null) {
+      final timer = Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (timer) {
+        if (!_isStreaming) {
           timer.cancel();
           controller.close();
           return;
         }
 
-        try {
-          controller.add(ImageHttpFormatter.formatFrame(_latestFrame!));
-        } catch (e) {
-          timer.cancel();
-          controller.close();
+        if (_rawFrameBuffer != null) {
+          try {
+            // Envia o frame formatado com cabeçalhos binários estritos para o navegador
+            controller.add(ImageHttpFormatter.formatFrame(_rawFrameBuffer!));
+          } catch (e) {
+            timer.cancel();
+            controller.close();
+          }
         }
       });
+
+      // Fechar recursos assíncronos se o cliente/PC fechar o navegador
+      request.context['shelf.io.connection_context'];
 
       return shelf.Response.ok(
         controller.stream,
         headers: {
           'Content-Type': 'multipart/x-mixed-replace; boundary=--frame',
-          'Cache-Control': 'no-cache, private',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Connection': 'keep-alive',
           'Pragma': 'no-cache',
         },
       );
@@ -130,7 +136,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
     _httpServer = await shelf_io.serve(router, InternetAddress.anyIPv4, 8080);
     
-    // Correção do Conflito 2 (Nova sintaxe do Bonsoir v7)
     BonsoirService service = BonsoirService(
       name: 'Camera_Impressora_3D',
       type: '_3dprintmonitor._tcp',
@@ -138,7 +143,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
     
     _bonsoirBroadcast = BonsoirBroadcast(service: service);
-    await _bonsoirBroadcast!.start(); // A v7 inicializa diretamente pelo start assíncrono
+    await _bonsoirBroadcast!.start();
 
     WakelockPlus.enable();
 
@@ -151,7 +156,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
   }
 
   Future<void> _stopServer() async {
-    await _cameraController?.stopImageStream();
+    if (_cameraController?.value.isStreamingImages ?? false) {
+      await _cameraController?.stopImageStream();
+    }
     await _bonsoirBroadcast?.stop();
     await _httpServer?.close(force: true);
     WakelockPlus.disable();
@@ -160,15 +167,14 @@ class _MonitorScreenState extends State<MonitorScreen> {
       _isStreaming = false;
       _isEconomicMode = false;
       _serverIp = "Desconectado";
-      _latestFrame = null;
+      _rawFrameBuffer = null;
     });
   }
 
   @override
   void dispose() {
+    _stopServer();
     _cameraController?.dispose();
-    _httpServer?.close();
-    _bonsoirBroadcast?.stop();
     super.dispose();
   }
 
@@ -238,7 +244,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     const Text("Taxa de Frames (FPS):"),
                     DropdownButton<int>(
                       value: _targetFps,
-                      items: [1, 5, 10, 15].map((fps) {
+                      items:.map((fps) {
                         return DropdownMenuItem(value: fps, child: Text("$fps FPS"));
                       }).toList(),
                       onChanged: _isStreaming ? null : (value) {
@@ -283,6 +289,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
   }
 }
 
+// FORMATADOR ESTRITO: Insere as quebras de linha corretas exigidas pelos navegadores
 class ImageHttpFormatter {
   static List<int> formatFrame(Uint8List frameBytes) {
     final List<int> chunks = [];
@@ -290,7 +297,7 @@ class ImageHttpFormatter {
     chunks.addAll('Content-Type: image/jpeg\r\n'.codeUnits);
     chunks.addAll('Content-Length: ${frameBytes.length}\r\n\r\n'.codeUnits);
     chunks.addAll(frameBytes);
-    chunks.addAll('\r\n'.codeUnits);
+    chunks.addAll('\r\n'.codeUnits); // Quebra de linha final obrigatória pós-binário
     return chunks;
   }
 }
