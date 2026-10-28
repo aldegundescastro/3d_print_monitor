@@ -1,0 +1,2 @@
+Este projeto permite transformar qualquer smartphone numa câmara sem fios para o PC, transmitindo vídeo ao vivo com alta performance e ultrabaixa latência através do navegador web.
+Utilizando a tecnologia WebRTC, a aplicação estabelece uma ligação direta Peer-to-Peer (P2P) entre o smartphone (emissor) e o computador (receptor). Isto significa que, após a ligação inicial, o fluxo de vídeo é enviado diretamente entre os dois dispositivos sem passar por servidores intermediários, garantindo a máxima velocidade e privacidade dos dados.
