@@ -9,25 +9,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # 1. Checkout atualizado para Node 24
       - uses: actions/checkout@v4
 
+      # 2. Configura e força o uso do Java 17 (Corrige o erro de compilação do Gradle)
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'zulu'
           java-version: '17'
 
+      # 3. Configura o Flutter estável
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
 
+      # 4. Descarrega as dependências do pubspec.yaml
       - name: Install Dependencies
         run: flutter pub get
 
+      # 5. Compila o APK ignorando validações de ícones para evitar quebras
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
 
+      # 6. Envia o ficheiro final pronto para download
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
