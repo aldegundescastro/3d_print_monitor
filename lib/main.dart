@@ -62,7 +62,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
     
     _cameraController = CameraController(
       widget.cameras.first,
-      ResolutionPreset.medium, // Melhor equilíbrio entre nitidez e fluidez
+      ResolutionPreset.low, // Mais leve para conversão manual
       enableAudio: false,
       imageFormatGroup: ImageFormatGroup.yuv420,
     );
@@ -94,9 +94,8 @@ class _MonitorScreenState extends State<MonitorScreen> {
           final int uvIndex = uvRowStride * (y ~/ 2) + uvPixelStride * (x ~/ 2);
 
           final int yp = yPlane.bytes[yIndex];
-          // Em muitos dispositivos Android os planos U/V estão trocados
-          final int up = vPlane.bytes[uvIndex];
-          final int vp = uPlane.bytes[uvIndex];
+          final int up = uPlane.bytes[uvIndex];
+          final int vp = vPlane.bytes[uvIndex];
 
           // Conversão YUV (BT.601)
           int r = (yp + vp * 1436 / 1024 - 179).round();
@@ -114,7 +113,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
       // Corrige rotação para visualização correta no navegador
       img.Image rotated = img.copyRotate(imgBuffer, angle: 90);
 
-      return Uint8List.fromList(img.encodeJpg(rotated, quality: 55));
+      return Uint8List.fromList(img.encodeJpg(rotated, quality: 48));
     } catch (e) {
       debugPrint('Erro conversão YUV->JPEG: $e');
       return null;
