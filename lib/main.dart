@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Router; // Oculta o Router do Flutter para evitar conflitos
 import 'package:camera/camera.dart';
 import 'package:shelf/shelf.dart' as shelf;
 import 'package:shelf/shelf_io.dart' as shelf_io;
-import 'package:shelf_router/shelf_router.dart';
+import 'package:shelf_router/shelf_router.dart' as shelf_router; // Prefixo para evitar conflito
 import 'package:bonsoir/bonsoir.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -55,15 +55,14 @@ class _MonitorScreenState extends State<MonitorScreen> {
     _initCamera();
   }
 
-  // MÓDULO: Captura e Processamento da Câmara
   Future<void> _initCamera() async {
     if (widget.cameras.isEmpty) return;
     
     _cameraController = CameraController(
       widget.cameras.first,
-      ResolutionPreset.medium, // 720p ou 480p estável para rede local
+      ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: ImageFormatGroup.jpeg, // Garante saída direta em JPEG no Android
+      imageFormatGroup: ImageFormatGroup.jpeg,
     );
 
     try {
@@ -74,7 +73,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
     }
   }
 
-  // MÓDULO: Gestão do Fluxo de Frames (Throttle por FPS)
   void _startImageStream() {
     _cameraController?.startImageStream((CameraImage image) {
       final now = DateTime.now();
@@ -83,24 +81,21 @@ class _MonitorScreenState extends State<MonitorScreen> {
       if (now.difference(_lastFrameTime).inMilliseconds >= interval) {
         _lastFrameTime = now;
         
-        // Em Android com ImageFormatGroup.jpeg, os bytes do JPEG estão no primeiro plano
         if (image.planes.isNotEmpty) {
           setState(() {
-            _latestFrame = image.planes[0].bytes;
+            _latestFrame = image.planes.bytes;
           });
         }
       }
     });
   }
 
-  // MÓDULO: Servidor HTTP MJPEG e Anúncio mDNS
   Future<void> _startServer() async {
-    final router = Router();
+    final router = shelf_router.Router(); // Correção do Conflito 1
 
     router.get('/stream', (shelf.Request request) {
       final controller = StreamController<List<int>>();
       
-      // Loop contínuo enviando frames enquanto o cliente estiver conectado
       Timer.periodic(Duration(milliseconds: 1000 ~/ _targetFps), (timer) {
         if (!_isStreaming || _latestFrame == null) {
           timer.cancel();
@@ -126,7 +121,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
       );
     });
 
-    // Descobrir o IP local do telemóvel na rede Wi-Fi
     final interfaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
     String localIp = "127.0.0.1";
     if (interfaces.isNotEmpty && interfaces.first.addresses.isNotEmpty) {
@@ -135,7 +129,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
 
     _httpServer = await shelf_io.serve(router, InternetAddress.anyIPv4, 8080);
     
-    // Iniciar anúncio mDNS para o PC encontrar o telemóvel sozinho
+    // Correção do Conflito 2 (Nova sintaxe do Bonsoir v7)
     BonsoirService service = BonsoirService(
       name: 'Camera_Impressora_3D',
       type: '_3dprintmonitor._tcp',
@@ -143,10 +137,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
     );
     
     _bonsoirBroadcast = BonsoirBroadcast(service: service);
-    await _bonsoirBroadcast!.ready;
-    await _bonsoirBroadcast!.start();
+    await _bonsoirBroadcast!.start(); // A v7 inicializa diretamente pelo start assíncrono
 
-    WakelockPlus.enable(); // Força o ecrã a manter-se ligado
+    WakelockPlus.enable();
 
     setState(() {
       _isStreaming = true;
@@ -178,14 +171,12 @@ class _MonitorScreenState extends State<MonitorScreen> {
     super.dispose();
   }
 
-  // MÓDULO: Interface do Utilizador (UI)
   @override
   Widget build(BuildContext context) {
     if (_cameraController == null || !_cameraController!.value.isInitialized) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    // Se o Modo Económico estiver ativo, exibe apenas um ecrã preto interativo
     if (_isEconomicMode) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -221,9 +212,9 @@ class _MonitorScreenState extends State<MonitorScreen> {
           ),
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.grey[900],
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+            decoration: const BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
             child: Column(
               children: [
@@ -261,7 +252,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                     Expanded(
                       child: ElevatedButton.icon(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: _isStreaming ? Colors.red[700] : Colors.green[700],
+                          backgroundColor: _isStreaming ? Colors.red : Colors.green,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         onPressed: _isStreaming ? _stopServer : _startServer,
@@ -273,7 +264,7 @@ class _MonitorScreenState extends State<MonitorScreen> {
                       const SizedBox(width: 12),
                       ElevatedButton(
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.amber[800],
+                          backgroundColor: Colors.amber,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                         ),
                         onPressed: () => setState(() => _isEconomicMode = true),
@@ -291,7 +282,6 @@ class _MonitorScreenState extends State<MonitorScreen> {
   }
 }
 
-// Auxiliar para construir a estrutura de bytes do protocolo MJPEG
 class ImageHttpFormatter {
   static List<int> formatFrame(Uint8List frameBytes) {
     final List<int> chunks = [];
